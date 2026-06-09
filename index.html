@@ -125,18 +125,22 @@
             const [introFeedback, setIntroFeedback] = useState(null);
             
             const containerRef = useRef(null);
-            const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+            // 改良版：儲存畫布實際像素大小，避免座標計算歸零
+            const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-            // 更新容器尺寸 (以供像素精準連線運算)
+            // 採用更穩定的 ResizeObserver 來監聽畫布大小
             useEffect(() => {
-                const updateSize = () => {
-                    if (containerRef.current) {
-                        setContainerSize({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
+                if (!containerRef.current) return;
+                const observer = new ResizeObserver(entries => {
+                    if (entries[0]) {
+                        setContainerSize({ 
+                            width: entries[0].contentRect.width, 
+                            height: entries[0].contentRect.height 
+                        });
                     }
-                };
-                updateSize();
-                window.addEventListener('resize', updateSize);
-                return () => window.removeEventListener('resize', updateSize);
+                });
+                observer.observe(containerRef.current);
+                return () => observer.disconnect();
             }, [viewMode, introPhase]);
 
             // 老師與學生狀態
@@ -175,7 +179,7 @@
             };
 
             const handlePointerMove = (e) => {
-                if (!containerRef.current) return;
+                if (!containerRef.current || containerSize.width === 0) return;
                 const rect = containerRef.current.getBoundingClientRect();
                 const pctX = (Math.max(0, Math.min(rect.width, e.clientX - rect.left)) / rect.width) * 100;
                 const pctY = (Math.max(0, Math.min(rect.height, e.clientY - rect.top)) / rect.height) * 100;
@@ -207,27 +211,24 @@
 
             // ================= 像素精準繪製線段與箭頭 =================
             const renderEdges = () => {
+                if (containerSize.width === 0) return null;
+
                 return edges.map((edge, idx) => {
                     const fromPos = positions[edge.from];
                     const toPos = positions[edge.to];
                     if (!fromPos || !toPos) return null;
 
-                    // 轉換回像素座標
                     const x1 = (fromPos.x / 100) * containerSize.width;
                     const y1 = (fromPos.y / 100) * containerSize.height;
                     const x2 = (toPos.x / 100) * containerSize.width;
                     const y2 = (toPos.y / 100) * containerSize.height;
 
-                    const dx = x2 - x1;
-                    const dy = y2 - y1;
-                    const dist = Math.hypot(dx, dy);
+                    const dx = x2 - x1; const dy = y2 - y1; const dist = Math.hypot(dx, dy);
+                    if (dist < 10) return null;
 
-                    // 若節點太近則不畫
-                    if (dist < 100) return null;
-
-                    // 縮短線段，使其貼齊生物卡片的邊緣 (約半徑 60px)
+                    // 確保箭頭剛好停在卡片邊緣
                     const startOffset = 60; 
-                    const endOffset = 80; // 留給箭頭更多的空間，避免插進字卡內部
+                    const endOffset = 80; 
                     
                     const startX = x1 + (dx / dist) * startOffset;
                     const startY = y1 + (dy / dist) * startOffset;
@@ -246,7 +247,6 @@
                                     onClick={(e) => { e.stopPropagation(); removeEdge(idx); }}
                                 />
                             )}
-                            {/* 實際顯示的藍色連線 */}
                             <line 
                                 x1={startX} y1={startY} x2={endX} y2={endY} 
                                 stroke="#6366f1" strokeWidth="4" 
@@ -259,7 +259,7 @@
             };
 
             const renderDrawingEdge = () => {
-                if (!drawingSource || !positions[drawingSource]) return null;
+                if (!drawingSource || !positions[drawingSource] || containerSize.width === 0) return null;
                 const fromPos = positions[drawingSource];
                 
                 const x1 = (fromPos.x / 100) * containerSize.width;
@@ -301,7 +301,7 @@
                 const isEdgesCorrect = expectedEdges.every(expected => edges.some(e => e.from === expected.from && e.to === expected.to));
 
                 if (!isEdgesCorrect) {
-                    setIntroFeedback({ type: 'error', msg: '🤔 連線有錯！請重新確認誰吃誰（例如：烏賊需要吃磷蝦與劍水蚤，所以箭頭必須從磷蝦與劍水蚤「指向」烏賊）。' });
+                    setIntroFeedback({ type: 'error', msg: '🤔 連線有錯！請重新確認誰吃誰（箭頭方向代表「能量流動」的方向：被吃 👉 捕食者。例如：烏賊需要吃磷蝦與劍水蚤，所以箭頭必須由磷蝦與劍水蚤「指向」烏賊）。' });
                     return;
                 }
 
@@ -447,7 +447,7 @@
                                                 <h3 className="font-bold text-lg flex items-center gap-2"><Network className="w-5 h-5"/> 階段一：建構食物網</h3>
                                                 <p>1. 點擊 <strong className="bg-white px-2 py-0.5 rounded text-indigo-700">🖐️ 自由移動</strong> 可以將字卡散佈到版面各處。</p>
                                                 <p>2. 切換至 <strong className="bg-white px-2 py-0.5 rounded text-red-600">↗️ 畫被吃連線</strong>，依照字卡提示的<strong className="text-red-500">「生存條件」</strong>，從獵物畫線連到捕食者！<br/>
-                                                   <span className="text-sm opacity-80">(若連錯了，游標移到線條上出現紅色時，點擊即可刪除)</span></p>
+                                                   <span className="text-sm opacity-80">(連線代表能量流動方向。若連錯了，游標移到線條上點擊即可刪除)</span></p>
                                             </div>
                                         )}
                                         {introPhase >= 2 && (
@@ -482,7 +482,6 @@
                                         {/* SVG 連線層 */}
                                         <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none', zIndex: 10 }}>
                                             <defs>
-                                                {/* 設定箭頭在線段的最末端 */}
                                                 <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
                                                     <polygon points="0 0, 8 4, 0 8" fill="#6366f1" />
                                                 </marker>
