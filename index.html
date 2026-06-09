@@ -57,12 +57,12 @@
         const CardType = { ALGAE: 'algae', COPEPOD: 'copepod', KRILL: 'krill', HERRING: 'herring', SQUID: 'squid', SHARK: 'shark' };
 
         const BASE_RATIO_CONFIG = [
-            { type: CardType.ALGAE, ratio: 10/36, name: '浮游藻類', score: 1, color: 'bg-green-50 border-green-500 text-green-800' },
-            { type: CardType.COPEPOD, ratio: 7/36, name: '劍水蚤', score: 2, color: 'bg-yellow-50 border-yellow-500 text-yellow-800' },
-            { type: CardType.KRILL, ratio: 7/36, name: '磷蝦', score: 2, color: 'bg-orange-50 border-orange-500 text-orange-800' },
-            { type: CardType.HERRING, ratio: 6/36, name: '鯡魚', score: 3, color: 'bg-blue-50 border-blue-500 text-blue-800' },
-            { type: CardType.SQUID, ratio: 4/36, name: '烏賊', score: 3, color: 'bg-purple-50 border-purple-500 text-purple-800' },
-            { type: CardType.SHARK, ratio: 2/36, name: '鯊魚', score: 4, color: 'bg-red-50 border-red-500 text-red-800' },
+            { type: CardType.ALGAE, ratio: 10/36, name: '浮游藻類', score: 1, color: 'bg-green-50 border-green-500 text-green-800', desc: '自營生物 (免吃)' },
+            { type: CardType.COPEPOD, ratio: 7/36, name: '劍水蚤', score: 2, color: 'bg-yellow-50 border-yellow-500 text-yellow-800', desc: '需 2 藻類' },
+            { type: CardType.KRILL, ratio: 7/36, name: '磷蝦', score: 2, color: 'bg-orange-50 border-orange-500 text-orange-800', desc: '需 2 藻類' },
+            { type: CardType.HERRING, ratio: 6/36, name: '鯡魚', score: 3, color: 'bg-blue-50 border-blue-500 text-blue-800', desc: '需 3 藻類+1 劍水蚤' },
+            { type: CardType.SQUID, ratio: 4/36, name: '烏賊', score: 3, color: 'bg-purple-50 border-purple-500 text-purple-800', desc: '需 2 磷蝦+1 劍水蚤' },
+            { type: CardType.SHARK, ratio: 2/36, name: '鯊魚', score: 4, color: 'bg-red-50 border-red-500 text-red-800', desc: '需 2 鯡魚+2 烏賊' },
         ];
 
         const CARD_INFO = BASE_RATIO_CONFIG.reduce((acc, card) => { acc[card.type] = card; return acc; }, {});
@@ -99,16 +99,14 @@
             const [viewMode, setViewMode] = useState('home');
             
             // --- Intro (教學) 狀態 ---
-            // introPhase: 1 (畫線建立食物網), 2 (標示生態階層), 3 (完成)
             const [introPhase, setIntroPhase] = useState(1);
             
-            // 初始隨機散佈位置 (百分比)
             const initialPositions = {
                 [CardType.ALGAE]: { x: 15, y: 80 },
                 [CardType.COPEPOD]: { x: 35, y: 80 },
                 [CardType.KRILL]: { x: 55, y: 80 },
-                [CardType.HERRING]: { x: 25, y: 55 },
-                [CardType.SQUID]: { x: 45, y: 55 },
+                [CardType.HERRING]: { x: 25, y: 50 },
+                [CardType.SQUID]: { x: 45, y: 50 },
                 [CardType.SHARK]: { x: 75, y: 80 },
             };
             
@@ -116,7 +114,7 @@
             const [edges, setEdges] = useState([]);
             const [labels, setLabels] = useState({ [CardType.ALGAE]: '', [CardType.COPEPOD]: '', [CardType.KRILL]: '', [CardType.HERRING]: '', [CardType.SQUID]: '', [CardType.SHARK]: '' });
             
-            const [interactionMode, setInteractionMode] = useState('move'); // 'move' 或 'draw'
+            const [interactionMode, setInteractionMode] = useState('move'); 
             const [dragNode, setDragNode] = useState(null);
             const [drawingSource, setDrawingSource] = useState(null);
             const [mouseCoords, setMouseCoords] = useState({ x: 0, y: 0 }); 
@@ -134,7 +132,7 @@
             const [simulationResult, setSimulationResult] = useState(null);
             const [showResult, setShowResult] = useState(false);
 
-            // ================= 教學模式：畫布與滑鼠互動邏輯 =================
+            // ================= 教學模式：完美修復的觸控與滑鼠互動 =================
             const enterIntroMode = () => {
                 setIntroPhase(1);
                 setPositions(initialPositions);
@@ -147,17 +145,20 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
-            const handlePointerDown = (e, type) => {
-                if (e.button !== 0) return; // 確保是左鍵點擊
-                
+            // 生物卡片「按下」時
+            const handleNodePointerDown = (e, type) => {
                 if (interactionMode === 'move') {
-                    setDragNode(type);
+                    // 移動模式：抓住卡片
                     e.target.setPointerCapture(e.pointerId);
+                    setDragNode(type);
                     e.stopPropagation();
                 } else if (interactionMode === 'draw' && introPhase === 1) {
+                    // 畫線模式：設定起點
                     if (!drawingSource) {
                         setDrawingSource(type);
+                        setMouseCoords({ x: positions[type].x, y: positions[type].y });
                     } else {
+                        // 如果起點已經存在，再次點擊會直接完成連線 (支援點擊法)
                         if (drawingSource !== type) {
                             const exists = edges.some(ed => ed.from === drawingSource && ed.to === type);
                             if (!exists) setEdges([...edges, { from: drawingSource, to: type }]);
@@ -168,31 +169,50 @@
                 }
             };
 
+            // 大畫布「滑動」時
             const handlePointerMove = (e) => {
                 if (!containerRef.current) return;
                 const rect = containerRef.current.getBoundingClientRect();
+                
+                // 計算比例座標 (%)
+                const pxX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                const pxY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+                const pctX = (pxX / rect.width) * 100;
+                const pctY = (pxY / rect.height) * 100;
 
                 if (dragNode) {
-                    // 轉為百分比儲存，讓視窗縮放時依然保持相對位置
-                    const pxX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-                    const pxY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
-                    setPositions(prev => ({
-                        ...prev,
-                        [dragNode]: { x: (pxX / rect.width) * 100, y: (pxY / rect.height) * 100 }
-                    }));
+                    setPositions(prev => ({ ...prev, [dragNode]: { x: pctX, y: pctY } }));
                 } else if (drawingSource) {
-                    setMouseCoords({
-                        x: ((e.clientX - rect.left) / rect.width) * 100,
-                        y: ((e.clientY - rect.top) / rect.height) * 100
-                    });
+                    setMouseCoords({ x: pctX, y: pctY });
                 }
             };
 
-            const handlePointerUp = (e) => {
-                if (dragNode) {
+            // 生物卡片「放開」時
+            const handleNodePointerUp = (e, type) => {
+                if (interactionMode === 'move' && dragNode === type) {
+                    // 移動模式：放開卡片
                     setDragNode(null);
-                    if(e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+                    if (e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+                    e.stopPropagation();
+                } else if (interactionMode === 'draw' && introPhase === 1) {
+                    // 畫線模式：如果在另一個節點上放開，自動連線 (支援拖拉法)
+                    if (drawingSource && drawingSource !== type) {
+                        const exists = edges.some(ed => ed.from === drawingSource && ed.to === type);
+                        if (!exists) setEdges([...edges, { from: drawingSource, to: type }]);
+                        setDrawingSource(null);
+                        e.stopPropagation();
+                    }
                 }
+            };
+
+            // 點擊大畫布空白處取消畫線
+            const handleContainerPointerDown = () => {
+                if (drawingSource) setDrawingSource(null);
+            };
+
+            // 滑鼠移出大畫布或放開時，確保卡片不會黏在滑鼠上
+            const handleContainerPointerUp = () => {
+                if (dragNode) setDragNode(null);
             };
 
             const removeEdge = (index) => {
@@ -202,14 +222,10 @@
             // ================= 驗證邏輯 =================
             const verifyPhase1 = () => {
                 const expectedEdges = [
-                    { from: CardType.ALGAE, to: CardType.COPEPOD },
-                    { from: CardType.ALGAE, to: CardType.KRILL },
-                    { from: CardType.ALGAE, to: CardType.HERRING },
-                    { from: CardType.COPEPOD, to: CardType.HERRING },
-                    { from: CardType.COPEPOD, to: CardType.SQUID },
-                    { from: CardType.KRILL, to: CardType.SQUID },
-                    { from: CardType.HERRING, to: CardType.SHARK },
-                    { from: CardType.SQUID, to: CardType.SHARK },
+                    { from: CardType.ALGAE, to: CardType.COPEPOD }, { from: CardType.ALGAE, to: CardType.KRILL },
+                    { from: CardType.ALGAE, to: CardType.HERRING }, { from: CardType.COPEPOD, to: CardType.HERRING },
+                    { from: CardType.COPEPOD, to: CardType.SQUID }, { from: CardType.KRILL, to: CardType.SQUID },
+                    { from: CardType.HERRING, to: CardType.SHARK }, { from: CardType.SQUID, to: CardType.SHARK },
                 ];
 
                 if (edges.length !== expectedEdges.length) {
@@ -217,9 +233,7 @@
                     return;
                 }
 
-                const isEdgesCorrect = expectedEdges.every(expected => 
-                    edges.some(e => e.from === expected.from && e.to === expected.to)
-                );
+                const isEdgesCorrect = expectedEdges.every(expected => edges.some(e => e.from === expected.from && e.to === expected.to));
 
                 if (!isEdgesCorrect) {
                     setIntroFeedback({ type: 'error', msg: '🤔 連線有錯！請重新確認誰吃誰（箭頭方向代表能量流動：被吃 👉 捕食者）。' });
@@ -227,32 +241,18 @@
                 }
 
                 setIntroPhase(2);
-                setInteractionMode('move'); // 鎖定回移動模式
+                setInteractionMode('move');
                 setIntroFeedback({ type: 'success', msg: '🎉 食物網建構正確！現在請透過卡片下方的選單，標註每隻生物的「生態階層」。' });
             };
 
             const verifyPhase2 = () => {
-                const expectedLabels = {
-                    [CardType.ALGAE]: 'producer',
-                    [CardType.COPEPOD]: 'primary',
-                    [CardType.KRILL]: 'primary',
-                    [CardType.HERRING]: 'secondary',
-                    [CardType.SQUID]: 'secondary',
-                    [CardType.SHARK]: 'tertiary'
-                };
-
+                const expectedLabels = { [CardType.ALGAE]: 'producer', [CardType.COPEPOD]: 'primary', [CardType.KRILL]: 'primary', [CardType.HERRING]: 'secondary', [CardType.SQUID]: 'secondary', [CardType.SHARK]: 'tertiary' };
                 const hasEmpty = Object.values(labels).some(l => l === '');
-                if (hasEmpty) {
-                    setIntroFeedback({ type: 'error', msg: '請為所有的生物都選擇一個生態階層喔！' });
-                    return;
-                }
+                
+                if (hasEmpty) { setIntroFeedback({ type: 'error', msg: '請為所有的生物都選擇一個生態階層喔！' }); return; }
 
                 const isLabelsCorrect = Object.keys(expectedLabels).every(type => labels[type] === expectedLabels[type]);
-
-                if (!isLabelsCorrect) {
-                    setIntroFeedback({ type: 'error', msg: '🤔 生態階層標註有誤！請觀察剛剛拉好的食物網階層來重新判斷。' });
-                    return;
-                }
+                if (!isLabelsCorrect) { setIntroFeedback({ type: 'error', msg: '🤔 生態階層標註有誤！請觀察剛剛拉好的食物網階層來重新判斷。' }); return; }
 
                 setIntroPhase(3);
                 setIntroFeedback({ type: 'success', msg: '🎉 太棒了！你完美掌握了食物網與生態階層的關聯，準備好進入遊戲了嗎？' });
@@ -277,9 +277,8 @@
                     Object.keys(counts).forEach(type => { if (counts[type] > 0) handStr.push(`${CARD_INFO[type].name}x${counts[type]}`); });
                     text += `👤 玩家 ${getPlayerLabel(idx)}: ${handStr.join(', ') || '無'}\n`;
                 });
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(text); setCopyFeedback("已複製！");
-                } else { setCopyFeedback("複製失敗"); }
+                if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); setCopyFeedback("已複製！"); } 
+                else { setCopyFeedback("複製失敗"); }
                 setTimeout(() => setCopyFeedback(""), 2000);
             };
 
@@ -291,8 +290,7 @@
             const adjustHand = (type, delta) => { setEcosystemHand(prev => ({ ...prev, [type]: Math.max(0, prev[type] + delta) })); setShowResult(false); };
             
             const calculateScore = () => {
-                let foodPool = { ...ecosystemHand }; 
-                let score = 0; let logs = []; 
+                let foodPool = { ...ecosystemHand }; let score = 0; let logs = []; 
                 let details = {
                     [CardType.SHARK]: { scoring: 0, starved: 0 }, [CardType.HERRING]: { scoring: 0, starved: 0, eaten: 0 },
                     [CardType.SQUID]: { scoring: 0, starved: 0, eaten: 0 }, [CardType.COPEPOD]: { scoring: 0, starved: 0, eaten: 0 },
@@ -378,7 +376,7 @@
 
                         {/* ================= 食物網教學 (兩階段探究) ================= */}
                         {viewMode === 'intro' && (
-                            <div className="space-y-6 animate-fade-in" onClick={() => setDrawingSource(null)}>
+                            <div className="space-y-6 animate-fade-in">
                                 <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-indigo-100">
                                     <div className="text-center max-w-2xl mx-auto mb-6">
                                         <h2 className="text-2xl font-bold text-indigo-800 mb-2">生態情境配對任務</h2>
@@ -389,8 +387,9 @@
                                         {introPhase === 1 && (
                                             <div className="text-indigo-900 space-y-2">
                                                 <h3 className="font-bold text-lg flex items-center gap-2"><Network className="w-5 h-5"/> 階段一：建構食物網</h3>
-                                                <p>1. 點擊 <strong className="bg-white px-2 py-0.5 rounded text-indigo-700">🖐️ 自由移動</strong> 可以拖拉生物來佈置版面。</p>
-                                                <p>2. 切換至 <strong className="bg-white px-2 py-0.5 rounded text-red-600">↗️ 畫被吃連線</strong>，點擊<strong className="text-red-500">「被吃」</strong>的生物再點擊<strong className="text-green-600">「捕食者」</strong>，拉出能量流動箭頭！</p>
+                                                <p>1. 點擊 <strong className="bg-white px-2 py-0.5 rounded text-indigo-700">🖐️ 自由移動</strong> 可以將字卡散佈到版面各處。</p>
+                                                <p>2. 切換至 <strong className="bg-white px-2 py-0.5 rounded text-red-600">↗️ 畫被吃連線</strong>，依照字卡提示的<strong className="text-red-500">「生存條件」</strong>，從獵物畫線連到捕食者！<br/>
+                                                   <span className="text-sm opacity-80">(支援點擊兩端，或是直接按住拖拉連線喔！)</span></p>
                                             </div>
                                         )}
                                         {introPhase >= 2 && (
@@ -401,7 +400,7 @@
                                         )}
                                     </div>
 
-                                    {/* 畫布工具列 (僅階段一顯示畫線切換) */}
+                                    {/* 畫布工具列 */}
                                     {introPhase === 1 && (
                                         <div className="flex justify-center gap-4 mb-4">
                                             <button onClick={() => { setInteractionMode('move'); setDrawingSource(null); }} className={`px-5 py-2.5 rounded-full font-bold flex items-center gap-2 transition-all ${interactionMode === 'move' ? 'bg-indigo-600 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
@@ -417,18 +416,18 @@
                                     <div 
                                         ref={containerRef}
                                         className="relative w-full h-[500px] md:h-[600px] bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-50 border-2 border-indigo-200 rounded-xl overflow-hidden touch-none shadow-inner mb-8"
+                                        onPointerDown={handleContainerPointerDown}
                                         onPointerMove={handlePointerMove}
-                                        onPointerUp={handlePointerUp}
-                                        onPointerLeave={handlePointerUp}
+                                        onPointerUp={handleContainerPointerUp}
+                                        onPointerLeave={handleContainerPointerUp}
                                     >
                                         {/* SVG 連線層 */}
                                         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 10 }}>
                                             <defs>
-                                                {/* refX 設為 55，確保箭頭提早結束，不會被 128px 寬的節點遮擋 */}
-                                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="16" refY="3.5" orient="auto">
+                                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="40" refY="3.5" orient="auto">
                                                     <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
                                                 </marker>
-                                                <marker id="arrowhead-drawing" markerWidth="10" markerHeight="7" refX="16" refY="3.5" orient="auto">
+                                                <marker id="arrowhead-drawing" markerWidth="10" markerHeight="7" refX="40" refY="3.5" orient="auto">
                                                     <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
                                                 </marker>
                                             </defs>
@@ -444,18 +443,15 @@
                                             )}
                                         </svg>
 
-                                        {/* 刪除連線按鈕層 (僅階段一) */}
+                                        {/* 刪除連線按鈕層 */}
                                         {introPhase === 1 && (
                                             <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 15 }}>
                                                 {edges.map((edge, idx) => (
                                                     <button 
-                                                        key={idx} 
-                                                        onClick={(e) => { e.stopPropagation(); removeEdge(idx); }} 
+                                                        key={idx} onClick={(e) => { e.stopPropagation(); removeEdge(idx); }} 
                                                         className="absolute w-6 h-6 bg-white border-2 border-red-400 text-red-500 font-black rounded-full flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:bg-red-500 hover:text-white hover:scale-110 transition-all shadow-md" 
                                                         style={{ left: `${(positions[edge.from].x + positions[edge.to].x)/2}%`, top: `${(positions[edge.from].y + positions[edge.to].y)/2}%`, fontSize: '12px' }}
-                                                    >
-                                                        ✕
-                                                    </button>
+                                                    >✕</button>
                                                 ))}
                                             </div>
                                         )}
@@ -464,11 +460,17 @@
                                         {Object.keys(CARD_INFO).map(type => (
                                             <div 
                                                 key={type}
-                                                style={{ left: `calc(${positions[type].x}% - 64px)`, top: `calc(${positions[type].y}% - ${introPhase >= 2 ? '45px' : '30px'})`, width: '128px' }}
+                                                style={{ left: `calc(${positions[type].x}% - 70px)`, top: `calc(${positions[type].y}% - ${introPhase >= 2 ? '50px' : '35px'})`, width: '140px' }}
                                                 className={`absolute z-20 p-2 border-2 rounded-xl text-center shadow-sm select-none transition-transform bg-white ${CARD_INFO[type].color} ${drawingSource === type ? 'ring-4 ring-indigo-500 scale-105 shadow-xl' : ''} ${interactionMode === 'move' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
-                                                onPointerDown={(e) => handlePointerDown(e, type)}
+                                                onPointerDown={(e) => handleNodePointerDown(e, type)}
+                                                onPointerUp={(e) => handleNodePointerUp(e, type)}
                                             >
-                                                <div className="font-bold text-lg">{CARD_INFO[type].name}</div>
+                                                <div className="font-bold text-lg leading-tight pointer-events-none">{CARD_INFO[type].name}</div>
+                                                
+                                                {/* 顯示生存條件 (吃什麼) */}
+                                                <div className="text-[11px] leading-tight opacity-90 mt-1 bg-white/70 px-1.5 py-0.5 rounded inline-block text-slate-800 font-bold pointer-events-none border border-slate-200">
+                                                    {CARD_INFO[type].desc}
+                                                </div>
                                                 
                                                 {/* 第二階段才出現下拉選單 */}
                                                 {introPhase >= 2 && (
