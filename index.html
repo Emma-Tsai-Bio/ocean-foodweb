@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>海洋生態食物鏈</title>
     
+    <!-- 載入 Tailwind CSS (美化樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- 載入 React 和 ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
+    <!-- 載入 Babel (讓瀏覽器看得懂 JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
@@ -22,7 +25,7 @@
         
         /* 增加刪除線條的 Hover 效果 */
         .edge-hit-area { cursor: pointer; }
-        .edge-hit-area:hover { stroke: rgba(239, 68, 68, 0.5); /* 提示刪除的紅色半透明 */ }
+        .edge-hit-area:hover { stroke: rgba(239, 68, 68, 0.5); }
     </style>
 </head>
 <body class="bg-cyan-50">
@@ -71,6 +74,14 @@
 
         const CARD_INFO = BASE_RATIO_CONFIG.reduce((acc, card) => { acc[card.type] = card; return acc; }, {});
 
+        // 身分選項清單
+        const ECOLOGICAL_ROLES = [
+            { id: 'producer', label: '🌿 生產' },
+            { id: 'primary', label: '🐛 初級' },
+            { id: 'secondary', label: '🐟 次級' },
+            { id: 'tertiary', label: '🦈 三級' }
+        ];
+
         // --- 輔助函式 ---
         const generateDeckByPlayers = (numPlayers) => {
             const totalCards = numPlayers * 5; 
@@ -116,7 +127,12 @@
             
             const [positions, setPositions] = useState(initialPositions);
             const [edges, setEdges] = useState([]);
-            const [labels, setLabels] = useState({ [CardType.ALGAE]: '', [CardType.COPEPOD]: '', [CardType.KRILL]: '', [CardType.HERRING]: '', [CardType.SQUID]: '', [CardType.SHARK]: '' });
+            
+            // 將 labels 改為陣列型態，支援多選
+            const [labels, setLabels] = useState({ 
+                [CardType.ALGAE]: [], [CardType.COPEPOD]: [], [CardType.KRILL]: [], 
+                [CardType.HERRING]: [], [CardType.SQUID]: [], [CardType.SHARK]: [] 
+            });
             
             const [interactionMode, setInteractionMode] = useState('move'); 
             const [dragNode, setDragNode] = useState(null);
@@ -125,10 +141,8 @@
             const [introFeedback, setIntroFeedback] = useState(null);
             
             const containerRef = useRef(null);
-            // 改良版：儲存畫布實際像素大小，避免座標計算歸零
             const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-            // 採用更穩定的 ResizeObserver 來監聽畫布大小
             useEffect(() => {
                 if (!containerRef.current) return;
                 const observer = new ResizeObserver(entries => {
@@ -156,7 +170,7 @@
             // ================= 教學模式：互動邏輯 =================
             const enterIntroMode = () => {
                 setIntroPhase(1); setPositions(initialPositions); setEdges([]);
-                setLabels({ [CardType.ALGAE]: '', [CardType.COPEPOD]: '', [CardType.KRILL]: '', [CardType.HERRING]: '', [CardType.SQUID]: '', [CardType.SHARK]: '' });
+                setLabels({ [CardType.ALGAE]: [], [CardType.COPEPOD]: [], [CardType.KRILL]: [], [CardType.HERRING]: [], [CardType.SQUID]: [], [CardType.SHARK]: [] });
                 setInteractionMode('move'); setDrawingSource(null); setIntroFeedback(null);
                 setViewMode('intro'); window.scrollTo({ top: 0, behavior: 'smooth' });
             };
@@ -209,6 +223,19 @@
             const handleContainerPointerUp = () => { if (dragNode) setDragNode(null); };
             const removeEdge = (index) => { setEdges(prev => prev.filter((_, i) => i !== index)); };
 
+            // 身分按鈕切換邏輯
+            const toggleLabel = (type, roleId, e) => {
+                e.stopPropagation(); // 避免觸發拖拉
+                setLabels(prev => {
+                    const currentLabels = prev[type];
+                    if (currentLabels.includes(roleId)) {
+                        return { ...prev, [type]: currentLabels.filter(id => id !== roleId) };
+                    } else {
+                        return { ...prev, [type]: [...currentLabels, roleId] };
+                    }
+                });
+            };
+
             // ================= 像素精準繪製線段與箭頭 =================
             const renderEdges = () => {
                 if (containerSize.width === 0) return null;
@@ -226,7 +253,6 @@
                     const dx = x2 - x1; const dy = y2 - y1; const dist = Math.hypot(dx, dy);
                     if (dist < 10) return null;
 
-                    // 確保箭頭剛好停在卡片邊緣
                     const startOffset = 60; 
                     const endOffset = 80; 
                     
@@ -237,7 +263,6 @@
 
                     return (
                         <g key={idx}>
-                            {/* 隱藏的加粗點擊區 (Hover會變紅) */}
                             {introPhase === 1 && (
                                 <line 
                                     x1={startX} y1={startY} x2={endX} y2={endY} 
@@ -306,17 +331,42 @@
                 }
 
                 setIntroPhase(2); setInteractionMode('move');
-                setIntroFeedback({ type: 'success', msg: '🎉 食物網建構正確！現在請透過卡片下方的選單，標註每隻生物的「生態階層」。' });
+                setIntroFeedback({ type: 'success', msg: '🎉 食物網建構正確！現在請透過卡片下方的按鈕，標註每隻生物的「生態階層」。' });
             };
 
             const verifyPhase2 = () => {
-                const expectedLabels = { [CardType.ALGAE]: 'producer', [CardType.COPEPOD]: 'primary', [CardType.KRILL]: 'primary', [CardType.HERRING]: 'secondary', [CardType.SQUID]: 'secondary', [CardType.SHARK]: 'tertiary' };
-                if (Object.values(labels).some(l => l === '')) { setIntroFeedback({ type: 'error', msg: '請為所有的生物都選擇一個生態階層喔！' }); return; }
+                // 核心改動：允許複數正確答案的陣列
+                const expectedLabels = { 
+                    [CardType.ALGAE]: ['producer'], 
+                    [CardType.COPEPOD]: ['primary'], 
+                    [CardType.KRILL]: ['primary'], 
+                    [CardType.HERRING]: ['primary', 'secondary'], // 鯡魚兼具兩種身分
+                    [CardType.SQUID]: ['secondary'], 
+                    [CardType.SHARK]: ['tertiary'] 
+                };
+                
+                // 檢查是否每個生物都至少選了一個
+                const hasEmpty = Object.values(labels).some(l => l.length === 0);
+                if (hasEmpty) { setIntroFeedback({ type: 'error', msg: '請為所有的生物都至少選擇一個生態階層喔！' }); return; }
 
-                const isLabelsCorrect = Object.keys(expectedLabels).every(type => labels[type] === expectedLabels[type]);
-                if (!isLabelsCorrect) { setIntroFeedback({ type: 'error', msg: '🤔 生態階層標註有誤！請觀察剛剛拉好的食物網階層來重新判斷。' }); return; }
+                // 陣列比對 (檢查長度與元素是否完全吻合)
+                const isLabelsCorrect = Object.keys(expectedLabels).every(type => {
+                    const expected = expectedLabels[type];
+                    const actual = labels[type];
+                    if (expected.length !== actual.length) return false;
+                    return expected.every(val => actual.includes(val));
+                });
 
-                setIntroPhase(3); setIntroFeedback({ type: 'success', msg: '🎉 太棒了！你完美掌握了食物網與生態階層的關聯，準備好進入遊戲了嗎？' });
+                if (!isLabelsCorrect) { 
+                    setIntroFeedback({ 
+                        type: 'error', 
+                        msg: '🤔 生態階層標註有誤！提示：請仔細觀察鯡魚吃的食物，因為牠同時吃藻類(生產者)跟劍水蚤(初級)，所以牠可能同時身兼兩種階層喔！' 
+                    }); 
+                    return; 
+                }
+
+                setIntroPhase(3); 
+                setIntroFeedback({ type: 'success', msg: '🎉 太棒了！你完美掌握了食物網與「複合生態階層」的關聯，準備好進入遊戲了嗎？' });
             };
 
             // ================= 老師與學生模式邏輯 (沿用) =================
@@ -453,7 +503,8 @@
                                         {introPhase >= 2 && (
                                             <div className="text-indigo-900 space-y-2">
                                                 <h3 className="font-bold text-lg flex items-center gap-2"><GraduationCap className="w-5 h-5"/> 階段二：標註生態階層</h3>
-                                                <p>食物網建構完成！請觀察你剛剛拉出的網狀關係，利用卡片下方的下拉選單，為每隻生物選擇正確的<strong className="bg-indigo-200 px-2 py-0.5 rounded text-indigo-800">生態階層</strong>（如：生產者、消費者）。</p>
+                                                <p>食物網建構完成！請利用卡片下方的小按鈕，為每隻生物點亮正確的<strong className="bg-indigo-200 px-2 py-0.5 rounded text-indigo-800">生態階層</strong>。<br/>
+                                                   <span className="text-sm opacity-90 text-red-600 font-bold">💡 提示：有的生物吃不只一種東西，身分是可以「複選」的喔！</span></p>
                                             </div>
                                         )}
                                     </div>
@@ -473,7 +524,7 @@
                                     {/* 互動大畫布 */}
                                     <div 
                                         ref={containerRef}
-                                        className="relative w-full h-[500px] md:h-[600px] bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-50 border-2 border-indigo-200 rounded-xl overflow-hidden touch-none shadow-inner mb-8"
+                                        className="relative w-full h-[500px] md:h-[650px] bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-50 border-2 border-indigo-200 rounded-xl overflow-hidden touch-none shadow-inner mb-8"
                                         onPointerDown={handleContainerPointerDown}
                                         onPointerMove={handlePointerMove}
                                         onPointerUp={handleContainerPointerUp}
@@ -498,7 +549,7 @@
                                         {Object.keys(CARD_INFO).map(type => (
                                             <div 
                                                 key={type}
-                                                style={{ left: `calc(${positions[type].x}% - 70px)`, top: `calc(${positions[type].y}% - ${introPhase >= 2 ? '50px' : '35px'})`, width: '140px' }}
+                                                style={{ left: `calc(${positions[type].x}% - 70px)`, top: `calc(${positions[type].y}% - ${introPhase >= 2 ? '65px' : '35px'})`, width: '140px' }}
                                                 className={`absolute z-20 p-2 border-2 rounded-xl text-center shadow-sm select-none transition-transform bg-white ${CARD_INFO[type].color} ${drawingSource === type ? 'ring-4 ring-indigo-500 scale-105 shadow-xl' : ''} ${interactionMode === 'move' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
                                                 onPointerDown={(e) => handleNodePointerDown(e, type)}
                                                 onPointerUp={(e) => handleNodePointerUp(e, type)}
@@ -506,24 +557,25 @@
                                                 <div className="font-bold text-lg leading-tight pointer-events-none">{CARD_INFO[type].name}</div>
                                                 
                                                 {/* 顯示生存條件 (吃什麼) */}
-                                                <div className="text-[11px] leading-tight opacity-90 mt-1 bg-white/70 px-1.5 py-0.5 rounded inline-block text-slate-800 font-bold pointer-events-none border border-slate-200">
+                                                <div className="text-[11px] leading-tight opacity-90 mt-1 mb-1 bg-white/70 px-1.5 py-0.5 rounded inline-block text-slate-800 font-bold pointer-events-none border border-slate-200">
                                                     {CARD_INFO[type].desc}
                                                 </div>
                                                 
-                                                {/* 第二階段下拉選單 */}
+                                                {/* 第二階段標籤四宮格按鈕 */}
                                                 {introPhase >= 2 && (
-                                                    <div className="mt-2" onPointerDown={(e) => e.stopPropagation()}>
-                                                        <select
-                                                            value={labels[type]}
-                                                            onChange={(e) => setLabels({...labels, [type]: e.target.value})}
-                                                            className={`w-full text-xs p-1.5 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white ${labels[type] ? 'border-indigo-400 text-indigo-700 font-bold' : 'border-slate-300 text-slate-500'}`}
-                                                        >
-                                                            <option value="" disabled>選擇階層...</option>
-                                                            <option value="producer">🌿 生產者</option>
-                                                            <option value="primary">🐛 初級消費者</option>
-                                                            <option value="secondary">🐟 次級消費者</option>
-                                                            <option value="tertiary">🦈 三級消費者</option>
-                                                        </select>
+                                                    <div className="mt-2 flex flex-wrap gap-1 justify-center" onPointerDown={(e) => e.stopPropagation()}>
+                                                        {ECOLOGICAL_ROLES.map(role => {
+                                                            const isActive = labels[type].includes(role.id);
+                                                            return (
+                                                                <button
+                                                                    key={role.id}
+                                                                    onClick={(e) => toggleLabel(type, role.id, e)}
+                                                                    className={`text-[10px] w-[45%] py-1 rounded transition-all ${isActive ? 'bg-indigo-500 text-white font-bold shadow-inner border border-indigo-600' : 'bg-white text-slate-500 border border-slate-300 hover:bg-indigo-50'}`}
+                                                                >
+                                                                    {role.label}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
