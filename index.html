@@ -5,14 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>海洋生態食物鏈</title>
     
-    <!-- 載入 Tailwind CSS (美化樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 載入 React 和 ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- 載入 Babel (讓瀏覽器看得懂 JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
@@ -74,7 +71,6 @@
 
         const CARD_INFO = BASE_RATIO_CONFIG.reduce((acc, card) => { acc[card.type] = card; return acc; }, {});
 
-        // 身分選項清單
         const ECOLOGICAL_ROLES = [
             { id: 'producer', label: '🌿 生產' },
             { id: 'primary', label: '🐛 初級' },
@@ -127,12 +123,7 @@
             
             const [positions, setPositions] = useState(initialPositions);
             const [edges, setEdges] = useState([]);
-            
-            // 將 labels 改為陣列型態，支援多選
-            const [labels, setLabels] = useState({ 
-                [CardType.ALGAE]: [], [CardType.COPEPOD]: [], [CardType.KRILL]: [], 
-                [CardType.HERRING]: [], [CardType.SQUID]: [], [CardType.SHARK]: [] 
-            });
+            const [labels, setLabels] = useState({ [CardType.ALGAE]: [], [CardType.COPEPOD]: [], [CardType.KRILL]: [], [CardType.HERRING]: [], [CardType.SQUID]: [], [CardType.SHARK]: [] });
             
             const [interactionMode, setInteractionMode] = useState('move'); 
             const [dragNode, setDragNode] = useState(null);
@@ -147,17 +138,13 @@
                 if (!containerRef.current) return;
                 const observer = new ResizeObserver(entries => {
                     if (entries[0]) {
-                        setContainerSize({ 
-                            width: entries[0].contentRect.width, 
-                            height: entries[0].contentRect.height 
-                        });
+                        setContainerSize({ width: entries[0].contentRect.width, height: entries[0].contentRect.height });
                     }
                 });
                 observer.observe(containerRef.current);
                 return () => observer.disconnect();
             }, [viewMode, introPhase]);
 
-            // 老師與學生狀態
             const [numPlayers, setNumPlayers] = useState(4); 
             const [distributedHands, setDistributedHands] = useState([]); 
             const [isDistributed, setIsDistributed] = useState(false);
@@ -223,9 +210,8 @@
             const handleContainerPointerUp = () => { if (dragNode) setDragNode(null); };
             const removeEdge = (index) => { setEdges(prev => prev.filter((_, i) => i !== index)); };
 
-            // 身分按鈕切換邏輯
             const toggleLabel = (type, roleId, e) => {
-                e.stopPropagation(); // 避免觸發拖拉
+                e.stopPropagation(); 
                 setLabels(prev => {
                     const currentLabels = prev[type];
                     if (currentLabels.includes(roleId)) {
@@ -253,8 +239,8 @@
                     const dx = x2 - x1; const dy = y2 - y1; const dist = Math.hypot(dx, dy);
                     if (dist < 10) return null;
 
-                    const startOffset = 60; 
-                    const endOffset = 80; 
+                    const startOffset = 65; 
+                    const endOffset = introPhase >= 2 ? 85 : 80; 
                     
                     const startX = x1 + (dx / dist) * startOffset;
                     const startY = y1 + (dy / dist) * startOffset;
@@ -326,41 +312,52 @@
                 const isEdgesCorrect = expectedEdges.every(expected => edges.some(e => e.from === expected.from && e.to === expected.to));
 
                 if (!isEdgesCorrect) {
-                    setIntroFeedback({ type: 'error', msg: '🤔 連線有錯！請重新確認誰吃誰（箭頭方向代表「能量流動」的方向：被吃 👉 捕食者。例如：烏賊需要吃磷蝦與劍水蚤，所以箭頭必須由磷蝦與劍水蚤「指向」烏賊）。' });
+                    setIntroFeedback({ 
+                        type: 'error', 
+                        msg: '🤔 連線有錯！請重新確認誰吃誰。\n(💡 提示：箭頭方向代表「能量流動」的方向：被吃 👉 捕食者。請仔細對照每張卡片上的「生存條件」來檢查喔！)' 
+                    });
                     return;
                 }
 
-                setIntroPhase(2); setInteractionMode('move');
+                setIntroPhase(2); 
+                setInteractionMode('move'); // 強制切換回移動模式
                 setIntroFeedback({ type: 'success', msg: '🎉 食物網建構正確！現在請透過卡片下方的按鈕，標註每隻生物的「生態階層」。' });
             };
 
             const verifyPhase2 = () => {
-                // 核心改動：允許複數正確答案的陣列
                 const expectedLabels = { 
                     [CardType.ALGAE]: ['producer'], 
                     [CardType.COPEPOD]: ['primary'], 
                     [CardType.KRILL]: ['primary'], 
-                    [CardType.HERRING]: ['primary', 'secondary'], // 鯡魚兼具兩種身分
+                    [CardType.HERRING]: ['primary', 'secondary'], 
                     [CardType.SQUID]: ['secondary'], 
                     [CardType.SHARK]: ['tertiary'] 
                 };
                 
-                // 檢查是否每個生物都至少選了一個
-                const hasEmpty = Object.values(labels).some(l => l.length === 0);
-                if (hasEmpty) { setIntroFeedback({ type: 'error', msg: '請為所有的生物都至少選擇一個生態階層喔！' }); return; }
+                let emptyCards = [];
+                let wrongCards = [];
 
-                // 陣列比對 (檢查長度與元素是否完全吻合)
-                const isLabelsCorrect = Object.keys(expectedLabels).every(type => {
+                Object.keys(expectedLabels).forEach(type => {
                     const expected = expectedLabels[type];
                     const actual = labels[type];
-                    if (expected.length !== actual.length) return false;
-                    return expected.every(val => actual.includes(val));
+                    
+                    if (actual.length === 0) {
+                        emptyCards.push(CARD_INFO[type].name);
+                    } else {
+                        const isCorrect = expected.length === actual.length && expected.every(val => actual.includes(val));
+                        if (!isCorrect) wrongCards.push(CARD_INFO[type].name);
+                    }
                 });
 
-                if (!isLabelsCorrect) { 
+                if (emptyCards.length > 0) { 
+                    setIntroFeedback({ type: 'error', msg: `請為以下生物選擇至少一個生態階層：${emptyCards.join(', ')}` }); 
+                    return; 
+                }
+
+                if (wrongCards.length > 0) { 
                     setIntroFeedback({ 
                         type: 'error', 
-                        msg: '🤔 生態階層標註有誤！提示：請仔細觀察鯡魚吃的食物，因為牠同時吃藻類(生產者)跟劍水蚤(初級)，所以牠可能同時身兼兩種階層喔！' 
+                        msg: `🤔 以下生物的階層標註有誤喔，請重新嘗試：${wrongCards.join(', ')}！\n(💡 提示：請觀察你連好的食物網，看看牠吃了誰！如果食物來源跨越不同階層，記得要「複選」喔！)` 
                     }); 
                     return; 
                 }
@@ -504,7 +501,8 @@
                                             <div className="text-indigo-900 space-y-2">
                                                 <h3 className="font-bold text-lg flex items-center gap-2"><GraduationCap className="w-5 h-5"/> 階段二：標註生態階層</h3>
                                                 <p>食物網建構完成！請利用卡片下方的小按鈕，為每隻生物點亮正確的<strong className="bg-indigo-200 px-2 py-0.5 rounded text-indigo-800">生態階層</strong>。<br/>
-                                                   <span className="text-sm opacity-90 text-red-600 font-bold">💡 提示：有的生物吃不只一種東西，身分是可以「複選」的喔！</span></p>
+                                                   <span className="text-sm opacity-90 text-red-600 font-bold">💡 提示1：有的生物吃不只一種東西，身分是可以「複選」的喔！</span><br/>
+                                                   <span className="text-sm opacity-90 text-indigo-600 font-bold">💡 提示2：選階層時依然可以自由拖拉卡片調整位置，以防擋住連線！</span></p>
                                             </div>
                                         )}
                                     </div>
@@ -595,8 +593,8 @@
                                         )}
 
                                         {introFeedback && (
-                                            <div className={`mt-4 p-4 rounded-lg border flex items-center gap-2 max-w-lg w-full ${introFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                                {introFeedback.type === 'success' ? <Leaf className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+                                            <div className={`mt-4 p-4 rounded-lg border flex items-center gap-2 max-w-lg w-full whitespace-pre-line ${introFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                                {introFeedback.type === 'success' ? <Leaf className="w-5 h-5 shrink-0 mt-0.5" /> : <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />}
                                                 <span>{introFeedback.msg}</span>
                                             </div>
                                         )}
